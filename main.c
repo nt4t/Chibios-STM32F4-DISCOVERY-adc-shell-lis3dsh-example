@@ -11,7 +11,8 @@ Connect PC0 to 3.3V and PC1 to GND for analog measurements.
 #include "hal.h"
 #include "shell.h"
 #include "chprintf.h"
-
+#include "lis302dl.h"
+#include "tm_stm32f4_lis302dl_lis3dsh.h"
 
 #define ADC_GRP1_NUM_CHANNELS   1
 #define ADC_GRP1_BUF_DEPTH      8
@@ -89,6 +90,49 @@ static const SPIConfig spi1cfg = {
   GPIOE_CS_SPI,
   SPI_CR1_BR_0 | SPI_CR1_BR_1 | SPI_CR1_CPOL | SPI_CR1_CPHA
 };
+
+static uint8_t readByteSPI(uint8_t reg)
+{
+	char txbuf[2] = {0x80 | reg, 0xFF};
+	char rxbuf[2];
+	spiSelect(&SPID1);
+	spiExchange(&SPID1, 2, txbuf, rxbuf);
+	spiUnselect(&SPID1);
+	return rxbuf[1];
+}
+
+static uint8_t writeByteSPI(uint8_t reg, uint8_t val)
+{
+	char txbuf[2] = {reg, val};
+	char rxbuf[2];
+	spiSelect(&SPID1);
+	spiExchange(&SPID1, 2, txbuf, rxbuf);
+	spiUnselect(&SPID1);
+	return rxbuf[1];
+}
+
+static uint8_t readGyro(float* data)
+{
+    /* read from L3GD20 registers and assemble data */
+    /* 0xc0 sets read and address increment */
+    static float mdps_per_digit = 8.75;
+    char txbuf[8] = {0xc0 | 0x27, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+//    char txbuf[8] = {0xe7, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    char rxbuf[8];
+    spiSelect(&SPID1);
+    spiExchange(&SPID1, 8, txbuf, rxbuf);
+    spiUnselect(&SPID1);
+    if (rxbuf[1] & 0x7) {
+        int16_t val_x = (rxbuf[3] << 8) | rxbuf[2];
+        int16_t val_y = (rxbuf[5] << 8) | rxbuf[4];
+        int16_t val_z = (rxbuf[7] << 8) | rxbuf[6];
+        data[0] = (((float)val_x) * mdps_per_digit)/1000.0;
+        data[1] = (((float)val_y) * mdps_per_digit)/1000.0;
+        data[2] = (((float)val_z) * mdps_per_digit)/1000.0;
+        return 1;
+    }
+    return 0;
+}
 
 
 /*
@@ -169,6 +213,88 @@ static void cmd_write(BaseSequentialStream *chp, int argc, char *argv[]) {
 static void cmd_adcl(BaseSequentialStream *chp, int argc, char *argv[]) {
 }
 
+static void cmd_accel(BaseSequentialStream *chp, int argc, char *argv[]) {
+//    writeByteSPI(0x20, 0xcf );  //init lis302 
+//    writeByteSPI(LIS302DL_CTRL_REG1, 0x67 );  //init lis302 
+
+//  writeByteSPI(LIS302DL_CTRL_REG1, (1<<PD_CTRL_REG1) );  //init lis302 
+//  writeByteSPI(LIS302DL_CTRL_REG2, (1<<FDS_CTRL_REG2) ); //enable FDS filter
+//
+
+    chprintf((BaseSequentialStream *) &SD2, "Who i am %x \n\r",  readByteSPI(LIS302DL_LIS3DSH_REG_WHO_I_AM));
+
+    uint16_t temp;
+    uint8_t tmpreg;
+
+    chprintf((BaseSequentialStream *) &SD2, "status %x \n\r", readByteSPI(0x27));
+
+    /* Set data */
+    temp = (uint16_t) (LIS3DSH_DATARATE_100 | LIS3DSH_XYZ_ENABLE);
+//    temp = (uint16_t) (0x70 | LIS3DSH_XYZ_ENABLE);
+    temp |= (uint16_t) (LIS3DSH_SERIALINTERFACE_4WIRE | LIS3DSH_SELFTEST_NORMAL);
+    temp |= (uint16_t) (LIS3DSH_FULLSCALE_16);
+    temp |= (uint16_t) (LIS3DSH_FILTER_BW_50 << 8);
+
+    /* Configure MEMS: power mode(ODR) and axes enable */
+    tmpreg = (uint8_t) (temp);
+
+    /* Write value to MEMS CTRL_REG4 register */
+    writeByteSPI(LIS3DSH_CTRL_REG4_ADDR, tmpreg);
+
+    /* Configure MEMS: full scale and self test */
+    tmpreg = (uint8_t) (temp >> 8);
+    writeByteSPI(LIS3DSH_CTRL_REG5_ADDR, tmpreg);
+
+    chprintf((BaseSequentialStream *) &SD2, "read REG4 %x\n\r",  readByteSPI(LIS3DSH_CTRL_REG4_ADDR));
+
+    // configure FIFO for bypass mode
+//    writeByteSPI(0x2e, 0);
+    // disable FIFO, enable register address auto-increment
+//    writeByteSPI(LIS3DSH_CTRL_REG6_ADDR, 0x10);
+
+//    writeByteSPI(LIS3DSH_CTRL_REG6_ADDR, 0x50);
+
+    uint8_t gbuf[128];
+ 
+  while(TRUE) {
+    float gyrodata[3];
+    int8_t buffer[6];
+    
+//    chprintf((BaseSequentialStream *) &SD2, " %x ", readByteSPI(0x27));
+
+//    chprintf((BaseSequentialStream *) &SD2, " %f ", readByteSPI(LIS3DSH_OUT_X_L_ADDR));
+//    chprintf((BaseSequentialStream *) &SD2, " %f ", readByteSPI(LIS3DSH_OUT_X_H_ADDR));
+
+    spiSelect(&SPID1);		/* Slave Select assertion.  */	 
+
+/*    writeByteSPI(0x20, 0x08);
+    writeByteSPI(0x23, 0x00);
+    writeByteSPI(0x2e, 0x40);
+*/
+    buffer[0] = readByteSPI(LIS3DSH_OUT_X_L_ADDR);
+    buffer[1] = readByteSPI(LIS3DSH_OUT_X_H_ADDR);
+
+    chprintf((BaseSequentialStream *) &SD2, " %d ", (int16_t)(((buffer[1] << 8) + buffer[0]) * 0.02));
+
+    chprintf((BaseSequentialStream *) &SD2, " %d ", readByteSPI(LIS3DSH_OUT_Y_L_ADDR));
+    chprintf((BaseSequentialStream *) &SD2, " %d ", readByteSPI(LIS3DSH_OUT_Y_H_ADDR));
+    chprintf((BaseSequentialStream *) &SD2, " %d ", readByteSPI(LIS3DSH_OUT_Z_L_ADDR));
+    chprintf((BaseSequentialStream *) &SD2, " %d ", readByteSPI(LIS3DSH_OUT_Z_H_ADDR));
+    chprintf((BaseSequentialStream *) &SD2, "temp %x \n\r", readByteSPI(0x0c));
+    
+    spiUnselect(&SPID1);		/* Slave Select assertion.  */	 
+
+
+//    if (readGyro(gyrodata)) {
+//	sprintf(gbuf, "%f", gyrodata[0]);
+//	while (chnGetTimeout((BaseChannel *)chp, TIME_IMMEDIATE) == Q_TIMEOUT) {
+//	    chprintf((BaseSequentialStream *) &SD2, " %f\t %f\t %f\t \r\n", gyrodata[0], gyrodata[1], gyrodata[2]);
+//	    chSequentialStreamWrite(&SD2, gbuf, sizeof gbuf - 1);
+//	}
+    chThdSleepMilliseconds(10);
+    }
+}
+
 static void cmd_threads(BaseChannel *chp, int argc, char *argv[]) {
   static const char *states[] = {
     "READY",
@@ -210,6 +336,7 @@ static const ShellCommand shCmds[] = {
     {"threads", cmd_threads},
     {"write",   cmd_write},
     {"smp",   cmd_smp},
+    {"accel",   cmd_accel},
     {"adcl",   cmd_adcl},
     {NULL, NULL}
 };
