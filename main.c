@@ -158,11 +158,14 @@ static void cmd_smp(BaseSequentialStream *chp, int argc, char *argv[]) {
 
 static void cmd_ledOn(BaseSequentialStream *chp, int argc, char *argv[]) {
     chprintf(chp, "PD3,4,6 Led on \n\r");  
-    pwmEnableChannel(&PWMD4, 0, (pwmcnt_t)+4);
-    pwmEnableChannel(&PWMD4, 1, (pwmcnt_t)+3);
-    pwmEnableChannel(&PWMD4, 2, (pwmcnt_t)+2);
-    pwmEnableChannel(&PWMD4, 3, (pwmcnt_t)+1);
-
+    int i;
+    for (i = 1;i < 100; i += 2) {
+	pwmEnableChannel(&PWMD4, 0, (pwmcnt_t) + i);
+        pwmEnableChannel(&PWMD4, 1, (pwmcnt_t) + i);
+	pwmEnableChannel(&PWMD4, 2, (pwmcnt_t) + i);
+        pwmEnableChannel(&PWMD4, 3, (pwmcnt_t) + i);
+	chThdSleepMilliseconds(100 - i);
+    }
 }
 
 static void cmd_ledOff(BaseSequentialStream *chp, int argc, char *argv[]) {
@@ -231,7 +234,7 @@ static void cmd_accel(BaseSequentialStream *chp, int argc, char *argv[]) {
 
 
     //TURN PWM LEDS
-    int16_t x = (int16_t)(((buffer[1] << 8) + buffer[0]) * 0.001);
+    int16_t x = (int16_t)(((buffer[1] << 8) + buffer[0]) * 0.005);
 
     if (x > 0){
 	pwmEnableChannel(&PWMD4, 2, (pwmcnt_t) + x);
@@ -242,7 +245,7 @@ static void cmd_accel(BaseSequentialStream *chp, int argc, char *argv[]) {
 	pwmEnableChannel(&PWMD4, 0, (pwmcnt_t) - x);
     }
 
-    int16_t y = (int16_t)(((buffer[3] << 8) + buffer[2]) * 0.001);
+    int16_t y = (int16_t)(((buffer[3] << 8) + buffer[2]) * 0.005);
 
     if (y > 0){
 	pwmEnableChannel(&PWMD4, 1, (pwmcnt_t) + y);
