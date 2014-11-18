@@ -44,6 +44,7 @@ static void adcerrorcallback(ADCDriver *adcp, adcerror_t err) {
     (void) adcp;
     (void) err;
 }
+
 /*
  * ADC conversion group.
  * Mode: Continuous, 16 samples of 8 channels, SW triggered.
@@ -172,8 +173,10 @@ static void cmd_accel(BaseSequentialStream *chp, int argc, char *argv[]) {
         chprintf((BaseSequentialStream *) & SD2, "LIS3DSH NOT found. Perhaps your revision of F4Discovery uses LIS302DL \n\r");
         chThdSleepMilliseconds(5500);
     }
+
     uint16_t temp;
     uint8_t tmpreg;
+
     /* Set data */
     temp = (uint16_t) (LIS3DSH_DATARATE_100 | LIS3DSH_XYZ_ENABLE);
     temp |= (uint16_t) (LIS3DSH_SERIALINTERFACE_4WIRE | LIS3DSH_SELFTEST_NORMAL);
@@ -187,18 +190,24 @@ static void cmd_accel(BaseSequentialStream *chp, int argc, char *argv[]) {
     tmpreg = (uint8_t) (temp >> 8);
     writeByteSPI(LIS3DSH_CTRL_REG5_ADDR, tmpreg);
     // chprintf((BaseSequentialStream *) &SD2, "read REG4 %x\n\r", readByteSPI(LIS3DSH_CTRL_REG4_ADDR));
+     
     while (TRUE) {
         int8_t buffer[6];
+
         buffer[0] = readByteSPI(LIS3DSH_OUT_X_L_ADDR);
         buffer[1] = readByteSPI(LIS3DSH_OUT_X_H_ADDR);
         chprintf((BaseSequentialStream *) & SD2, " %d ", (int16_t) (((buffer[1] << 8) + buffer[0]) * 0.02));
+
         buffer[2] = readByteSPI(LIS3DSH_OUT_Y_L_ADDR);
         buffer[3] = readByteSPI(LIS3DSH_OUT_Y_H_ADDR);
         chprintf((BaseSequentialStream *) & SD2, " %d ", (int16_t) (((buffer[3] << 8) + buffer[2]) * 0.02));
+
         buffer[4] = readByteSPI(LIS3DSH_OUT_Y_L_ADDR);
         buffer[5] = readByteSPI(LIS3DSH_OUT_Y_H_ADDR);
         chprintf((BaseSequentialStream *) & SD2, " %d ", (int16_t) (((buffer[5] << 8) + buffer[4]) * 0.02));
+
         chprintf((BaseSequentialStream *) & SD2, "temp %x \n\r", readByteSPI(0x0c));
+
         //TURN PWM LEDS
         int16_t x = (int16_t) (((buffer[1] << 8) + buffer[0]) * 0.005);
         if (x > 0) {
@@ -208,6 +217,7 @@ static void cmd_accel(BaseSequentialStream *chp, int argc, char *argv[]) {
             pwmEnableChannel(&PWMD4, 2, (pwmcnt_t) 0);
             pwmEnableChannel(&PWMD4, 0, (pwmcnt_t) - x);
         }
+
         int16_t y = (int16_t) (((buffer[3] << 8) + buffer[2]) * 0.005);
         if (y > 0) {
             pwmEnableChannel(&PWMD4, 1, (pwmcnt_t) + y);
@@ -236,10 +246,13 @@ static void cmd_threads(BaseChannel *chp, int argc, char *argv[]) {
         "WTMSG",
         "FINAL"
     };
+
     Thread *tp;
     char buf[60];
+
     chprintf(chp, " addr stack prio refs state time \n\r\n\r");
     tp = chRegFirstThread();
+
     do {
         sprintf(buf, "%8p %8p %4i %4i %9s %i",
                 tp, tp->p_ctx, tp->p_prio, tp->p_refs - 1,
@@ -268,36 +281,39 @@ static const ShellConfig shCfg = {
  * Application entry point.
  */
 int main(void) {
+
     Thread *sh = NULL;
     halInit();
     chSysInit();
+
     sdStart(&SD2, NULL);
     palSetPadMode(GPIOA, 2, PAL_MODE_ALTERNATE(7)); /* USART1 TX. */
     palSetPadMode(GPIOA, 3, PAL_MODE_ALTERNATE(7)); /* USART1 RX. */
+
     /*
      * Setting up analog inputs used by the demo.
      */
     palSetGroupMode(GPIOC, PAL_PORT_BIT(1) | PAL_PORT_BIT(2),
             0, PAL_MODE_INPUT_ANALOG);
+
     spiStart(&SPID1, &spi1cfg);
-    /*
-     * Creates the blinker thread.
-     */
-    chThdCreateStatic(waThread1, sizeof (waThread1), NORMALPRIO, Thread1, NULL);
-    /*
-     * Linear conversion.
-     */
+
+//    chThdCreateStatic(waThread1, sizeof (waThread1), NORMALPRIO, Thread1, NULL);
+
     // adcConvert(&ADCD1, &adcgrpcfg1, samples1, ADC_GRP1_BUF_DEPTH);
-    // chThdSleepMilliseconds(1000);
+     
     pwmStart(&PWMD4, &pwmcfg);
     palSetPadMode(GPIOD, GPIOD_LED4, PAL_MODE_ALTERNATE(2)); /* Green. */
     palSetPadMode(GPIOD, GPIOD_LED3, PAL_MODE_ALTERNATE(2)); /* Orange. */
     palSetPadMode(GPIOD, GPIOD_LED5, PAL_MODE_ALTERNATE(2)); /* Red. */
     palSetPadMode(GPIOD, GPIOD_LED6, PAL_MODE_ALTERNATE(2)); /* Blue. */
+
     adcStart(&ADCD1, NULL);
     adcSTM32EnableTSVREFE();
     adcStartConversion(&ADCD1, &adcgrpcfg2, samples2, ADC_GRP2_BUF_DEPTH);
+
     shellInit();
+
     for (;;) {
         if (!sh)
             sh = shellCreate(&shCfg, SHELL_WA_SIZE, NORMALPRIO);
