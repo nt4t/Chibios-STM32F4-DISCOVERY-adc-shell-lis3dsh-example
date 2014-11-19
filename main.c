@@ -9,13 +9,69 @@ Connect PC0 to 3.3V and PC1 to GND for analog measurements.
 #include "shell.h"
 #include "chprintf.h"
 #include "tm_stm32f4_lis302dl_lis3dsh.h"
+
 #define ADC_GRP1_NUM_CHANNELS 1
 #define ADC_GRP1_BUF_DEPTH 8
 #define ADC_GRP2_NUM_CHANNELS 4
 #define ADC_GRP2_BUF_DEPTH 16
 #define SHELL_WA_SIZE THD_WA_SIZE(1024)
+
+bool extBreak = FALSE;
+
+static void led5off(void *arg) {
+    (void)arg;
+    extBreak = FALSE;
+}
+
+/* Triggered when the button is pressed or released. */
+static void extcb1(EXTDriver *extp, expchannel_t channel) {
+    static VirtualTimer vt4;
+
+    (void)extp;
+    (void)channel;
+
+    extBreak = TRUE;
+
+    chSysLockFromIsr();
+    if (chVTIsArmedI(&vt4))
+    chVTResetI(&vt4);
+
+    /* set to extBreak to FALSE after 100mS.*/
+    chVTSetI(&vt4, MS2ST(100), led5off, NULL);
+    chSysUnlockFromIsr();
+}
+
+static const EXTConfig extcfg = {
+  {
+    {EXT_CH_MODE_BOTH_EDGES | EXT_CH_MODE_AUTOSTART | EXT_MODE_GPIOA, extcb1},
+    {EXT_CH_MODE_DISABLED, NULL},
+    {EXT_CH_MODE_DISABLED, NULL},
+    {EXT_CH_MODE_BOTH_EDGES | EXT_CH_MODE_AUTOSTART | EXT_MODE_GPIOA, extcb1},
+    {EXT_CH_MODE_DISABLED, NULL},
+    {EXT_CH_MODE_DISABLED, NULL},
+    {EXT_CH_MODE_DISABLED, NULL},
+    {EXT_CH_MODE_DISABLED, NULL},
+    {EXT_CH_MODE_DISABLED, NULL},
+    {EXT_CH_MODE_DISABLED, NULL},
+    {EXT_CH_MODE_DISABLED, NULL},
+    {EXT_CH_MODE_DISABLED, NULL},
+    {EXT_CH_MODE_DISABLED, NULL},
+    {EXT_CH_MODE_DISABLED, NULL},
+    {EXT_CH_MODE_DISABLED, NULL},
+    {EXT_CH_MODE_DISABLED, NULL},
+    {EXT_CH_MODE_DISABLED, NULL},
+    {EXT_CH_MODE_DISABLED, NULL},
+    {EXT_CH_MODE_DISABLED, NULL},
+    {EXT_CH_MODE_DISABLED, NULL},
+    {EXT_CH_MODE_DISABLED, NULL},
+    {EXT_CH_MODE_DISABLED, NULL},
+    {EXT_CH_MODE_DISABLED, NULL}
+  }
+};
+
 static adcsample_t samples1[ADC_GRP1_NUM_CHANNELS * ADC_GRP1_BUF_DEPTH];
 static adcsample_t samples2[ADC_GRP2_NUM_CHANNELS * ADC_GRP2_BUF_DEPTH];
+
 /*
  * ADC streaming callback.
  */
@@ -146,6 +202,7 @@ static void cmd_smp(BaseSequentialStream *chp, int argc, char *argv[]) {
 static void cmd_ledOn(BaseSequentialStream *chp, int argc, char *argv[]) {
     chprintf(chp, "PD3,4,6 Led on \n\r");
     int i;
+    int j = 1;
     for (i = 1; i < 100; i += 2) {
         pwmEnableChannel(&PWMD4, 0, (pwmcnt_t) + i);
         pwmEnableChannel(&PWMD4, 1, (pwmcnt_t) + i);
@@ -190,8 +247,9 @@ static void cmd_accel(BaseSequentialStream *chp, int argc, char *argv[]) {
     tmpreg = (uint8_t) (temp >> 8);
     writeByteSPI(LIS3DSH_CTRL_REG5_ADDR, tmpreg);
     // chprintf((BaseSequentialStream *) &SD2, "read REG4 %x\n\r", readByteSPI(LIS3DSH_CTRL_REG4_ADDR));
-     
-    while (TRUE) {
+    
+    extBreak = FALSE; //run until rx int not coming
+    while (!extBreak) {
         int8_t buffer[6];
 
         buffer[0] = readByteSPI(LIS3DSH_OUT_X_L_ADDR);
@@ -228,6 +286,8 @@ static void cmd_accel(BaseSequentialStream *chp, int argc, char *argv[]) {
         }
         chThdSleepMilliseconds(100);
     }
+
+    cmd_ledOff(&SD2, 0, 0);
 }
 
 static void cmd_threads(BaseChannel *chp, int argc, char *argv[]) {
@@ -289,6 +349,8 @@ int main(void) {
     sdStart(&SD2, NULL);
     palSetPadMode(GPIOA, 2, PAL_MODE_ALTERNATE(7)); /* USART1 TX. */
     palSetPadMode(GPIOA, 3, PAL_MODE_ALTERNATE(7)); /* USART1 RX. */
+    
+    extStart(&EXTD1, &extcfg);
 
     /*
      * Setting up analog inputs used by the demo.
