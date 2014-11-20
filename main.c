@@ -18,7 +18,7 @@ Connect PC0 to 3.3V and PC1 to GND for analog measurements.
 
 bool extBreak = FALSE;
 
-static void led5off(void *arg) {
+static void ext_flag_off(void *arg) {
     (void)arg;
     extBreak = FALSE;
 }
@@ -37,7 +37,7 @@ static void extcb1(EXTDriver *extp, expchannel_t channel) {
     chVTResetI(&vt4);
 
     /* set to extBreak to FALSE after 100mS.*/
-    chVTSetI(&vt4, MS2ST(100), led5off, NULL);
+    chVTSetI(&vt4, MS2ST(100), ext_flag_off, NULL);
     chSysUnlockFromIsr();
 }
 
@@ -321,6 +321,7 @@ static void cmd_threads(BaseChannel *chp, int argc, char *argv[]) {
         tp = chRegNextThread(tp);
     } while (tp != NULL);
 }
+
 static const ShellCommand shCmds[] = {
     {"temp", cmd_temp},
     {"volt", cmd_volt},
@@ -332,6 +333,7 @@ static const ShellCommand shCmds[] = {
     {"adcl", cmd_adcl},
     {NULL, NULL}
 };
+
 static const ShellConfig shCfg = {
     (BaseSequentialStream *) & SD2,
     shCmds
@@ -361,8 +363,7 @@ int main(void) {
     spiStart(&SPID1, &spi1cfg);
 
 //    chThdCreateStatic(waThread1, sizeof (waThread1), NORMALPRIO, Thread1, NULL);
-
-    // adcConvert(&ADCD1, &adcgrpcfg1, samples1, ADC_GRP1_BUF_DEPTH);
+//    adcConvert(&ADCD1, &adcgrpcfg1, samples1, ADC_GRP1_BUF_DEPTH);
      
     pwmStart(&PWMD4, &pwmcfg);
     palSetPadMode(GPIOD, GPIOD_LED4, PAL_MODE_ALTERNATE(2)); /* Green. */
@@ -375,6 +376,8 @@ int main(void) {
     adcStartConversion(&ADCD1, &adcgrpcfg2, samples2, ADC_GRP2_BUF_DEPTH);
 
     shellInit();
+
+    cmd_accel(&SD2, 0, 0);
 
     for (;;) {
         if (!sh)
